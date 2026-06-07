@@ -1,48 +1,52 @@
 #include "miner.h"
-#include <vector>
+#include <sys/mman.h>
 
-int main() {
-    std::cout << "[*] Initializing AVX-512 Optimized SHA-256 Mining Engine..." << std::endl;
-
-    // Simulated Chunk 1 of an 80-byte Bitcoin block header
-    uint32_t mock_chunk1[16] = {
-        0x00000002, 0x00000000, 0x00000000, 0x00000000,
-        0x00000000, 0x00000000, 0x00000000, 0x00000000,
-        0x12345678, 0x9abcdef0, 0x23456789, 0xabcdef01,
-        0x3456789a, 0xbcdef012, 0x456789ab, 0xcdef0123
-    };
-
-    // Preallocate and compute midstate container matrix
-    alignas(64) uint32_t computed_midstate[8];
-    precompute_midstate(mock_chunk1, computed_midstate);
-
-    // Mock two consecutive workloads for pipeline memory mapping
-    std::vector<BlockHeaderChunk2> workload_queue(10);
-    for (int i = 0; i < 10; ++i) {
-        workload_queue[i].data[0] = 0x5a5a5a5a; // Merkle component fragment
-        workload_queue[i].data[1] = 0x614e5c00; // Timestamp entry
-        workload_queue[i].data[2] = 0x1d00ffff; // Bits/Difficulty boundary target
-        workload_queue[i].data[3] = 0x00000000; // Placeholder for changing nonces
+void precompute_midstate(const uint32_t* chunk1, uint32_t* output_midstate) {
+    uint32_t a = 0x6a09e667, b = 0xbb67ae85, c = 0x3c6ef372, d = 0xa54ff53a;
+    uint32_t e = 0x510e527f, f = 0x9b05688c, g = 0x1f83d9ab, h = 0x5be0cd19;
+    
+    uint32_t w[64];
+    for (int i = 0; i < 16; ++i) w[i] = chunk1[i];
+    for (int i = 16; i < 64; ++i) {
+        uint32_t s0 = ((w[i-15] >> 7) | (w[i-15] << 25)) ^ ((w[i-15] >> 18) | (w[i-15] << 14)) ^ (w[i-15] >> 3);
+        uint32_t s1 = ((w[i-2] >> 17) | (w[i-2] << 15)) ^ ((w[i-2] >> 19) | (w[i-2] << 13)) ^ (w[i-2] >> 10);
+        w[i] = w[i-16] + s0 + w[i-7] + s1;
     }
-
-    uint32_t difficulty_target = 0x000000ff; // High mock criteria value
-    uint32_t running_nonce = 0x00000000;
-
-    std::cout << "[*] Starting parallel search across processing pipeline lanes..." << std::endl;
-
-    // Run parallel evaluation streams using look-ahead parameter parameters
-    for (size_t batch_index = 0; batch_index < workload_queue.size() - 1; batch_index++) {
-        opencl_style_avx512_miner(
-            computed_midstate,
-            &workload_queue[batch_index],
-            &workload_queue[batch_index + 1], // Pre-fetch look-ahead assignment
-            running_nonce,
-            difficulty_target
-        );
-        running_nonce += 16; // Increment by explicit lane width allocation offset
+    for (int i = 0; i < 64; ++i) {
+        uint32_t t1 = h + (((e >> 6) | (e << 26)) ^ ((e >> 11) | (e << 21)) ^ ((e >> 25) | (e << 7))) + ((e & f) ^ (~e & g)) + w[i] + K[i];
+        uint32_t t2 = (((a >> 2) | (a << 30)) ^ ((a >> 13) | (a << 19)) ^ ((a >> 22) | (a << 10))) + ((a & b) ^ (a & c) ^ (b & c));
+        h = g; g = f; f = e; e = d + t1; d = c; c = b; b = a; a = t1 + t2;
     }
-
-    std::cout << "[*] Search pipeline complete." << std::endl;
-    return 0;
+    
+    output_midstate[0] = a; output_midstate[1] = b; output_midstate[2] = c; output_midstate[3] = d;
+    output_midstate[4] = e; output_midstate[5] = f; output_midstate[6] = g; output_midstate[7] = h;
 }
 
+int main() {
+    std::cout << "[*] Engaging Maximum Silicon Boundary Engine (Ternary Logic + Pipeline Collapse)..." << std::endl;
+
+    alignas(64) uint32_t midstate[8];
+    uint32_t dummy_header_chunk[16] = {0x01000000, 0x00000000, 0x00000000};
+    precompute_midstate(dummy_header_chunk, midstate);
+
+    size_t allocation_bytes = 16 * sizeof(CryptoBlock);
+    CryptoBlock* blocks_matrix = (CryptoBlock*)mmap(
+        nullptr, allocation_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0
+    );
+
+    if (blocks_matrix == MAP_FAILED) {
+        blocks_matrix = (CryptoBlock*)mmap(nullptr, allocation_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    }
+
+    for (int b = 0; b < 16; b++) {
+        for (int w = 0; w < 4; w++) {
+            blocks_matrix[b].words[w] = 0x11111111 * (b + 1) + w;
+        }
+    }
+
+    execute_max_boundary_core(midstate, blocks_matrix, 0x000000ff);
+
+    munmap(blocks_matrix, allocation_bytes);
+    std::cout << "[*] Verification pipeline completed." << std::endl;
+    return 0;
+}
